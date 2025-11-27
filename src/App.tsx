@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
-import { Target, TrendingUp, BookOpen, Headphones, Save, History, PlusCircle, Trash2, Edit3, CheckSquare, ExternalLink, Library, StickyNote, Flag, Sprout, LogIn, LogOut, Loader2 } from 'lucide-react';
+import { Target, TrendingUp, BookOpen, Headphones, Save, History, PlusCircle, Trash2, Edit3, CheckSquare, ExternalLink, Library, StickyNote, Flag, Sprout, LogIn, LogOut, Loader2, Calendar } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -67,6 +67,17 @@ const calculateBand = (rawScore: any, type: any) => {
     if (score >= 23) return 6.0; if (score >= 18) return 5.5; if (score >= 16) return 5.0;
     if (score >= 13) return 4.5; if (score >= 10) return 4.0; return 3.5;
   }
+};
+
+const generateHeatmapDays = () => {
+  const days = [];
+  const today = new Date();
+  for (let i = 89; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+  return days;
 };
 
 // --- DATA SERVICE & SYNC LOGIC ---
@@ -342,12 +353,28 @@ export default function IELTSTrackerPro() {
   const setYesterday = (e: any) => { e.preventDefault(); const d = new Date(); d.setDate(d.getDate() - 1); setDate(d.toISOString().substr(0, 10)); };
 
   // --- STATS ---
+  const listeningLogs = logs.filter(l => l.type === 'listening');
+  const readingLogs = logs.filter(l => l.type === 'reading');
+  const avgListening = listeningLogs.length > 0 ? (listeningLogs.reduce((a, b) => a + b.band, 0) / listeningLogs.length).toFixed(1) : 0;
+  const avgReading = readingLogs.length > 0 ? (readingLogs.reduce((a, b) => a + b.band, 0) / readingLogs.length).toFixed(1) : 0;
+
   const chartData = [...logs].reverse().map(l => ({
     date: l.date,
     name: l.testName,
     listening: l.type === 'listening' ? l.band : null,
     reading: l.type === 'reading' ? l.band : null,
   }));
+
+  const heatmapDays = generateHeatmapDays();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const logsByDate = logs.reduce((acc: any, log: any) => { 
+    if (log.date) {
+      acc[log.date] = (acc[log.date] || 0) + 1; 
+    }
+    return acc; 
+  }, {});
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const getHeatmapColor = (count: any) => !count ? 'bg-slate-100' : count === 1 ? 'bg-emerald-200' : count === 2 ? 'bg-emerald-400' : 'bg-emerald-600';
 
   const allVocabularies = logs.flatMap(log => 
     (log.vocabList || []).map((v: any) => ({ ...v, sourceTest: log.testName, sourceDate: log.date, originalLogId: log.id }))
@@ -387,6 +414,14 @@ export default function IELTSTrackerPro() {
           <div className="flex items-center gap-6">
              <div className="hidden md:flex gap-6 text-sm">
                  <div className="text-center">
+                    <div className="text-slate-400 text-xs uppercase font-semibold">Listening Avg</div>
+                    <div className={`text-xl font-bold ${parseFloat(avgListening as string) >= targetBand ? 'text-emerald-400' : 'text-white'}`}>{avgListening || '-'}</div>
+                 </div>
+                 <div className="text-center">
+                    <div className="text-slate-400 text-xs uppercase font-semibold">Reading Avg</div>
+                    <div className={`text-xl font-bold ${parseFloat(avgReading as string) >= targetBand ? 'text-emerald-400' : 'text-white'}`}>{avgReading || '-'}</div>
+                 </div>
+                 <div className="text-center">
                     <div className="text-slate-400 text-xs uppercase font-semibold">Target</div>
                     <div className="text-xl font-bold text-emerald-400">{targetBand}</div>
                  </div>
@@ -416,6 +451,19 @@ export default function IELTSTrackerPro() {
                     <div><h3 className="text-sm font-bold text-slate-800">Mục tiêu Band Score</h3></div>
                 </div>
                 <select value={targetBand} onChange={(e) => setTargetBand(parseFloat(e.target.value))} className="p-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none bg-slate-50">{[4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0].map(s => <option key={s} value={s}>{s}</option>)}</select>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+               <h3 className="text-sm font-bold text-slate-700 uppercase mb-4 flex items-center gap-2"><Calendar size={16} /> Mức độ chăm chỉ (90 ngày qua)</h3>
+               <div className="flex flex-wrap gap-1">
+                  {heatmapDays.map(day => (
+                      <div 
+                        key={day} 
+                        title={`${day}: ${logsByDate[day] || 0} bài`}
+                        className={`w-3 h-3 md:w-4 md:h-4 rounded-sm ${getHeatmapColor(logsByDate[day])} transition-all hover:ring-2 ring-slate-300 cursor-pointer`}
+                      ></div>
+                  ))}
+               </div>
             </div>
 
             <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
