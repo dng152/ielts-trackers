@@ -11,14 +11,15 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 // ⚠️ QUAN TRỌNG: COPY FIREBASE CONFIG TỪ VOCAB GARDEN VÀO ĐÂY
 // ==========================================
 const firebaseConfig = {
-  // Dán config của bạn vào đây...
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "...",
-  appId: "..."
-};
+      apiKey: "AIzaSyArHo3gqBJruAo-mbxqTGzQpHd9L8wtyJk",
+      authDomain: "vocab-garden-34782.firebaseapp.com",
+      projectId: "vocab-garden-34782",
+      storageBucket: "vocab-garden-34782.firebasestorage.app",
+      messagingSenderId: "188945133804",
+      appId: "1:188945133804:web:907b733d5a324761d1b5c9",
+      measurementId: "G-680H5JDZ8Q"
+    };
+
 
 // --- KHỞI TẠO FIREBASE ---
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
