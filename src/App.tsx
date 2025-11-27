@@ -396,6 +396,9 @@ export default function IELTSTrackerPro() {
     alert(`Đã đồng bộ xong! Tổng cộng ${total} từ đã được gửi sang vườn.`);
   }
 
+  // Define input parts for safer mapping (avoid null in array)
+  const inputParts = inputType === 'listening' ? ['p1', 'p2', 'p3', 'p4'] : ['p1', 'p2', 'p3'];
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
       {/* HEADER */}
@@ -415,11 +418,11 @@ export default function IELTSTrackerPro() {
              <div className="hidden md:flex gap-6 text-sm">
                  <div className="text-center">
                     <div className="text-slate-400 text-xs uppercase font-semibold">Listening Avg</div>
-                    <div className={`text-xl font-bold ${parseFloat(avgListening as string) >= targetBand ? 'text-emerald-400' : 'text-white'}`}>{avgListening || '-'}</div>
+                    <div className={`text-xl font-bold ${parseFloat(avgListening.toString()) >= targetBand ? 'text-emerald-400' : 'text-white'}`}>{avgListening || '-'}</div>
                  </div>
                  <div className="text-center">
                     <div className="text-slate-400 text-xs uppercase font-semibold">Reading Avg</div>
-                    <div className={`text-xl font-bold ${parseFloat(avgReading as string) >= targetBand ? 'text-emerald-400' : 'text-white'}`}>{avgReading || '-'}</div>
+                    <div className={`text-xl font-bold ${parseFloat(avgReading.toString()) >= targetBand ? 'text-emerald-400' : 'text-white'}`}>{avgReading || '-'}</div>
                  </div>
                  <div className="text-center">
                     <div className="text-slate-400 text-xs uppercase font-semibold">Target</div>
@@ -518,8 +521,8 @@ export default function IELTSTrackerPro() {
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Số câu đúng</label>
                     <div className="grid grid-cols-4 gap-4">
-                        {['p1', 'p2', 'p3', inputType === 'listening' ? 'p4' : null].filter(Boolean).map((part, index) => (
-                            <div key={part}><input type="number" placeholder={`P${index + 1}`} min="0" max="14" value={scores[part]} onChange={e => handleScoreChange(part, e.target.value)} className="w-full p-3 text-center border border-slate-200 rounded-lg font-mono text-lg font-bold outline-none focus:border-indigo-500" /></div>
+                        {inputParts.map((part) => (
+                            <div key={part}><input type="number" placeholder={`/${inputType === 'listening' && part === 'p4' ? '10' : '13-14'}`} min="0" max="14" value={scores[part]} onChange={e => handleScoreChange(part, e.target.value)} className="w-full p-3 text-center border border-slate-200 rounded-lg font-mono text-lg font-bold outline-none focus:border-indigo-500" /></div>
                         ))}
                     </div>
                   </div>
