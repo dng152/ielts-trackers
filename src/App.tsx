@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import { Target, TrendingUp, BookOpen, Headphones, Save, History, PlusCircle, Trash2, Edit3, CheckSquare, ExternalLink, Library, StickyNote, Flag, Sprout, LogIn, LogOut, Loader2 } from 'lucide-react';
 
-// --- FIREBASE IMPORTS (Lấy từ Vocab Garden) ---
+// --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -21,10 +21,11 @@ const firebaseConfig = {
 };
 
 // --- KHỞI TẠO FIREBASE ---
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let app: any;
 let auth: any;
 let db: any;
-const VOCAB_GARDEN_APP_ID = 'vocab-garden'; // KHÔNG ĐỔI ID NÀY (để khớp với Vocab Garden)
+const VOCAB_GARDEN_APP_ID = 'vocab-garden';
 
 try {
   if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
@@ -68,17 +69,6 @@ const calculateBand = (rawScore: any, type: any) => {
   }
 };
 
-const generateHeatmapDays = () => {
-  const days = [];
-  const today = new Date();
-  for (let i = 89; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(today.getDate() - i);
-    days.push(d.toISOString().split('T')[0]);
-  }
-  return days;
-};
-
 // --- DATA SERVICE & SYNC LOGIC ---
 
 const DataService = {
@@ -93,7 +83,6 @@ const DataService = {
   },
   saveTarget: (target: any) => localStorage.setItem('ielts_target', target.toString()),
 
-  // === TÍNH NĂNG MỚI: ĐỒNG BỘ SANG VOCAB GARDEN ===
   syncToGarden: async (user: any, vocabList: any, testName: any) => {
     if (!user || !db || vocabList.length === 0) return { success: false, count: 0 };
     
@@ -101,20 +90,19 @@ const DataService = {
     const gardenRef = collection(db, `artifacts/${VOCAB_GARDEN_APP_ID}/users/${user.uid}/words`);
 
     for (const v of vocabList) {
-      if (!v.checked) continue; // Chỉ sync những từ đã check (hoặc bỏ logic này nếu muốn sync hết)
+      if (!v.checked) continue;
 
-      // 1. Map dữ liệu từ IELTS Tracker -> Cấu trúc Vocab Garden
       const gardenWord = {
         text: v.text,
-        meaning: v.note || 'Từ vựng từ IELTS Tracker', // Dùng note làm meaning tạm nếu không có
+        meaning: v.note || 'Từ vựng từ IELTS Tracker',
         example: `Context in ${testName}`,
-        phonetic: '', // Tracker chưa có phonetic
+        phonetic: '',
         partOfSpeech: 'unknown',
-        folder: 'IELTS Tracker', // Tự động gom vào folder này
-        tags: `IELTS, ${testName}`, // Gắn tag tên bài thi
+        folder: 'IELTS Tracker',
+        tags: `IELTS, ${testName}`,
         link: v.link || '',
         note: v.note || '',
-        cefr: getCEFRLevel(v.text), // Tự động tính CEFR để hiện màu bên Garden
+        cefr: getCEFRLevel(v.text),
         image: null,
         audio: null,
         dateAdded: new Date().toISOString(),
@@ -181,23 +169,19 @@ function AuthButton({ user, onLogin, onLogout }: any) {
 
 export default function IELTSTrackerPro() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  // FIX: Thêm <any[]> để tránh lỗi never[]
   const [logs, setLogs] = useState<any[]>([]);
   const [targetBand, setTargetBand] = useState(6.5);
-  // FIX: Thêm <any>
   const [user, setUser] = useState<any>(null);
   
   // Input State
   const [editingId, setEditingId] = useState<any>(null);
   const [inputType, setInputType] = useState('listening');
-  // FIX: Khai báo rõ kiểu cho scores để tránh lỗi index
   const [scores, setScores] = useState<any>({ p1: '', p2: '', p3: '', p4: '' });
   const [testName, setTestName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().substr(0, 10));
   
   // Note & Vocab State
   const [notes, setNotes] = useState('');
-  // FIX: Thêm <any[]>
   const [vocabList, setVocabList] = useState<any[]>([]); 
   const [tempVocab, setTempVocab] = useState({ text: '', link: '', note: '' });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -240,7 +224,7 @@ export default function IELTSTrackerPro() {
       text: tempVocab.text,
       link: tempVocab.link,
       note: tempVocab.note,
-      checked: true // Mặc định check để sync
+      checked: true 
     };
     setVocabList([...vocabList, newItem]);
     setTempVocab({ text: '', link: '', note: '' });
@@ -358,23 +342,12 @@ export default function IELTSTrackerPro() {
   const setYesterday = (e: any) => { e.preventDefault(); const d = new Date(); d.setDate(d.getDate() - 1); setDate(d.toISOString().substr(0, 10)); };
 
   // --- STATS ---
-  const listeningLogs = logs.filter(l => l.type === 'listening');
-  const readingLogs = logs.filter(l => l.type === 'reading');
-  const avgListening = listeningLogs.length > 0 ? (listeningLogs.reduce((a, b) => a + b.band, 0) / listeningLogs.length).toFixed(1) : 0;
-  const avgReading = readingLogs.length > 0 ? (readingLogs.reduce((a, b) => a + b.band, 0) / readingLogs.length).toFixed(1) : 0;
-
   const chartData = [...logs].reverse().map(l => ({
     date: l.date,
     name: l.testName,
     listening: l.type === 'listening' ? l.band : null,
     reading: l.type === 'reading' ? l.band : null,
   }));
-
-  const heatmapDays = generateHeatmapDays();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const logsByDate = logs.reduce((acc: any, log) => { acc[log.date] = (acc[log.date] || 0) + 1; return acc; }, {});
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const getHeatmapColor = (count: any) => !count ? 'bg-slate-100' : count === 1 ? 'bg-emerald-200' : count === 2 ? 'bg-emerald-400' : 'bg-emerald-600';
 
   const allVocabularies = logs.flatMap(log => 
     (log.vocabList || []).map((v: any) => ({ ...v, sourceTest: log.testName, sourceDate: log.date, originalLogId: log.id }))
