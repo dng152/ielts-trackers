@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
-import { Target, TrendingUp, BookOpen, Headphones, Save, History, PlusCircle, Trash2, Edit3, CheckSquare, ExternalLink, Library, StickyNote, Flag, Sprout, LogIn, LogOut, Loader2, Calendar, Wand2, Search } from 'lucide-react';
+import { Target, TrendingUp, BookOpen, Headphones, Save, History, PlusCircle, Trash2, Edit3, CheckSquare, ExternalLink, Library, StickyNote, Flag, Sprout, LogIn, LogOut, Loader2, Calendar, Wand2 } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -95,8 +95,7 @@ const DataService = {
   },
   saveTarget: (target: any) => localStorage.setItem('ielts_target', target.toString()),
 
-  // === TÍNH NĂNG ĐỒNG BỘ NÂNG CAO ===
-  // Sử dụng đúng nguồn Dictionary API mà Vocab Garden dùng
+  // === TÍNH NĂNG MỚI: AUTO ENRICH VOCABULARY (Đã tích hợp lại) ===
   syncToGarden: async (user: any, vocabList: any, testName: any) => {
     if (!user || !db || vocabList.length === 0) return { success: false, count: 0 };
     
@@ -106,17 +105,17 @@ const DataService = {
     for (const v of vocabList) {
       if (!v.checked) continue;
 
-      // 1. Chuẩn bị dữ liệu mặc định
+      // 1. Chuẩn bị dữ liệu mặc định (Tránh lỗi UNKNOWN)
       let enrichedData = {
         phonetic: '',
-        partOfSpeech: 'noun',
+        partOfSpeech: 'noun', // Mặc định là Noun để hiển thị đẹp
         audio: null,
         definition: '',
         translatedMeaning: ''
       };
 
       try {
-        // 2. Tra từ điển Anh-Anh (Nguồn: DictionaryAPI.dev - giống Vocab Garden)
+        // 2. Tra từ điển Anh-Anh (Nguồn: DictionaryAPI.dev)
         const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${v.text}`);
         if (dictRes.ok) {
             const data = await dictRes.json();
@@ -128,7 +127,7 @@ const DataService = {
             enrichedData.definition = entry.meanings[0]?.definitions[0]?.definition || '';
         }
 
-        // 3. Nếu note trống, thử tra từ điển Anh-Việt (Nguồn: MyMemory - giống Vocab Garden)
+        // 3. Nếu note trống, thử tra từ điển Anh-Việt (Nguồn: MyMemory)
         if (!v.note) {
              const transRes = await fetch(`https://api.mymemory.translated.net/get?q=${v.text}&langpair=en|vi`);
              const transData = await transRes.json();
@@ -147,16 +146,16 @@ const DataService = {
       const gardenWord = {
         text: v.text,
         meaning: finalMeaning,
-        example: `Context in ${testName}`, // Gắn ngữ cảnh là bài thi
-        phonetic: enrichedData.phonetic,
-        partOfSpeech: enrichedData.partOfSpeech,
+        example: `Context in ${testName}`,
+        phonetic: enrichedData.phonetic, // Đã có phiên âm
+        partOfSpeech: enrichedData.partOfSpeech, // Đã có loại từ
         folder: 'IELTS Tracker',
         tags: `IELTS, ${testName}`,
         link: v.link || '',
         note: v.note || '', 
         cefr: getCEFRLevel(v.text),
         image: null,
-        audio: enrichedData.audio,
+        audio: enrichedData.audio, // Đã có audio
         dateAdded: new Date().toISOString(),
         reviewCount: 0,
         aiPracticeCount: 0
@@ -219,14 +218,13 @@ function AuthButton({ user, onLogin, onLogout }: any) {
   );
 }
 
-// --- AUTOCOMPLETE INPUT COMPONENT ---
+// --- AUTOCOMPLETE INPUT COMPONENT (UPDATED) ---
 function VocabInput({ value, onChange, onSelectSuggestion, placeholder, className }: any) {
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const wrapperRef = useRef<any>(null);
 
     useEffect(() => {
-        // Nguồn API: Datamuse (Giống Vocab Garden)
         const fetchSuggestions = async () => {
             if (value.length > 1) {
                 try {
@@ -257,6 +255,19 @@ function VocabInput({ value, onChange, onSelectSuggestion, placeholder, classNam
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // Helper để lấy màu cho CEFR Badge
+    const getLevelColor = (level: string) => {
+        switch(level) {
+            case 'A1': return 'bg-green-50 text-green-700 border-green-200';
+            case 'A2': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            case 'B1': return 'bg-blue-50 text-blue-700 border-blue-200';
+            case 'B2': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+            case 'C1': return 'bg-purple-50 text-purple-700 border-purple-200';
+            case 'C2': return 'bg-pink-50 text-pink-700 border-pink-200';
+            default: return 'bg-slate-50 text-slate-500 border-slate-200';
+        }
+    };
+
     return (
         <div className="relative flex-1" ref={wrapperRef}>
             <input 
@@ -268,19 +279,25 @@ function VocabInput({ value, onChange, onSelectSuggestion, placeholder, classNam
             />
             {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute bottom-full left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl mb-1 z-50 overflow-hidden">
-                    {suggestions.map((s, i) => (
-                        <div 
-                            key={i} 
-                            onClick={() => {
-                                onSelectSuggestion(s.word);
-                                setShowSuggestions(false);
-                            }}
-                            className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-sm text-slate-700 flex justify-between items-center"
-                        >
-                            <span>{s.word}</span>
-                            <span className="text-xs text-slate-400 bg-slate-50 px-1 rounded border">Datamuse</span>
-                        </div>
-                    ))}
+                    {suggestions.map((s, i) => {
+                        const level = getCEFRLevel(s.word);
+                        const levelClass = getLevelColor(level);
+                        return (
+                            <div 
+                                key={i} 
+                                onClick={() => {
+                                    onSelectSuggestion(s.word);
+                                    setShowSuggestions(false);
+                                }}
+                                className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-sm text-slate-700 flex justify-between items-center"
+                            >
+                                <span>{s.word}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${levelClass}`}>
+                                    {level}
+                                </span>
+                            </div>
+                        )
+                    })}
                 </div>
             )}
         </div>
@@ -338,11 +355,8 @@ export default function IELTSTrackerPro() {
     }
   };
 
-  // Hàm xử lý khi chọn từ gợi ý
   const handleSelectSuggestion = async (word: string) => {
       setTempVocab(prev => ({ ...prev, text: word }));
-      
-      // Tự động tìm nghĩa tiếng Việt (nguồn MyMemory giống Vocab Garden)
       setIsLoadingMeaning(true);
       try {
           const res = await fetch(`https://api.mymemory.translated.net/get?q=${word}&langpair=en|vi`);
@@ -411,7 +425,7 @@ export default function IELTSTrackerPro() {
       try {
         const result = await DataService.syncToGarden(user, vocabList, finalTestName);
         if (result.success && result.count > 0) {
-          alert(`Đã lưu kết quả & Trồng ${result.count} từ mới sang Vocab Garden! 🌱\n(App đã tự động tra từ điển để điền phiên âm & loại từ cho bạn)`);
+          alert(`Đã lưu kết quả & Trồng ${result.count} từ mới sang Vocab Garden! 🌱\n(App đã tự động tìm Phiên âm, Loại từ & Nghĩa tiếng Việt cho bạn)`);
         } else {
           alert('Đã lưu kết quả (Không có từ vựng nào được sync).');
         }
@@ -495,21 +509,19 @@ export default function IELTSTrackerPro() {
   }));
 
   const heatmapDays = generateHeatmapDays();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const logsByDate = logs.reduce((acc: any, log: any) => { 
     if (log.date) {
       acc[log.date] = (acc[log.date] || 0) + 1; 
     }
     return acc; 
   }, {});
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  
   const getHeatmapColor = (count: any) => !count ? 'bg-slate-100' : count === 1 ? 'bg-emerald-200' : count === 2 ? 'bg-emerald-400' : 'bg-emerald-600';
 
   const allVocabularies = logs.flatMap(log => 
     (log.vocabList || []).map((v: any) => ({ ...v, sourceTest: log.testName, sourceDate: log.date, originalLogId: log.id }))
   ).sort((a, b) => new Date(b.sourceDate).getTime() - new Date(a.sourceDate).getTime()); 
 
-  // Manual Sync Button Handler
   const handleManualSync = async () => {
     if(!user) return alert("Vui lòng kết nối tài khoản Vocab Garden trước.");
     const confirmSync = confirm("Bạn có muốn đồng bộ lại toàn bộ từ vựng trong lịch sử sang Vocab Garden không? (Có thể tạo từ trùng lặp nếu đã sync trước đó)");
@@ -525,7 +537,7 @@ export default function IELTSTrackerPro() {
     alert(`Đã đồng bộ xong! Tổng cộng ${total} từ đã được gửi sang vườn.\n(Các từ được tự động bổ sung phiên âm & loại từ)`);
   }
 
-  // Define input parts for safer mapping (avoid null in array) - Explicitly typed
+  // Khai báo rõ kiểu string[] để tránh lỗi TS2538 ở vòng lặp
   const inputParts: string[] = inputType === 'listening' ? ['p1', 'p2', 'p3', 'p4'] : ['p1', 'p2', 'p3'];
 
   return (
