@@ -4,11 +4,11 @@ import { Target, TrendingUp, BookOpen, Headphones, Save, History, PlusCircle, Tr
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, query, orderBy, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 
 // ==========================================
-// ⚠️ QUAN TRỌNG: COPY FIREBASE CONFIG TỪ VOCAB GARDEN VÀO ĐÂY
+// ⚠️ CẤU HÌNH FIREBASE (Dùng chung với Vocab Garden)
 // ==========================================
 const firebaseConfig = {
       apiKey: "AIzaSyArHo3gqBJruAo-mbxqTGzQpHd9L8wtyJk",
@@ -25,7 +25,6 @@ const firebaseConfig = {
 let app: any;
 let auth: any;
 let db: any;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const VOCAB_GARDEN_APP_ID = 'vocab-garden';
 
 try {
@@ -81,21 +80,9 @@ const generateHeatmapDays = () => {
   return days;
 };
 
-// --- DATA SERVICE & SYNC LOGIC ---
+// --- DATA SERVICE (Cloud Only) ---
 
 const DataService = {
-  getLogs: () => {
-    const data = localStorage.getItem('ielts_pro_logs');
-    return data ? JSON.parse(data) : [];
-  },
-  saveLogs: (newLogs: any) => localStorage.setItem('ielts_pro_logs', JSON.stringify(newLogs)),
-  getTarget: () => {
-    const target = localStorage.getItem('ielts_target');
-    return target ? parseFloat(target) : 6.5;
-  },
-  saveTarget: (target: any) => localStorage.setItem('ielts_target', target.toString()),
-
-  // === TÍNH NĂNG MỚI: AUTO ENRICH VOCABULARY (Đã tích hợp lại) ===
   syncToGarden: async (user: any, vocabList: any, testName: any) => {
     if (!user || !db || vocabList.length === 0) return { success: false, count: 0 };
     
@@ -105,17 +92,15 @@ const DataService = {
     for (const v of vocabList) {
       if (!v.checked) continue;
 
-      // 1. Chuẩn bị dữ liệu mặc định (Tránh lỗi UNKNOWN)
       let enrichedData = {
         phonetic: '',
-        partOfSpeech: 'noun', // Mặc định là Noun để hiển thị đẹp
+        partOfSpeech: 'noun',
         audio: null,
         definition: '',
         translatedMeaning: ''
       };
 
       try {
-        // 2. Tra từ điển Anh-Anh (Nguồn: DictionaryAPI.dev)
         const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${v.text}`);
         if (dictRes.ok) {
             const data = await dictRes.json();
@@ -127,7 +112,6 @@ const DataService = {
             enrichedData.definition = entry.meanings[0]?.definitions[0]?.definition || '';
         }
 
-        // 3. Nếu note trống, thử tra từ điển Anh-Việt (Nguồn: MyMemory)
         if (!v.note) {
              const transRes = await fetch(`https://api.mymemory.translated.net/get?q=${v.text}&langpair=en|vi`);
              const transData = await transRes.json();
@@ -135,27 +119,25 @@ const DataService = {
                  enrichedData.translatedMeaning = transData.responseData.translatedText;
              }
         }
-
       } catch (err) {
         console.warn(`Lỗi tra cứu cho: ${v.text}`, err);
       }
 
-      // 4. Ưu tiên: Note người dùng nhập > Dịch tự động > Định nghĩa tiếng Anh > Mặc định
       const finalMeaning = v.note ? v.note : (enrichedData.translatedMeaning || enrichedData.definition || 'Từ vựng từ IELTS Tracker');
 
       const gardenWord = {
         text: v.text,
         meaning: finalMeaning,
         example: `Context in ${testName}`,
-        phonetic: enrichedData.phonetic, // Đã có phiên âm
-        partOfSpeech: enrichedData.partOfSpeech, // Đã có loại từ
+        phonetic: enrichedData.phonetic,
+        partOfSpeech: enrichedData.partOfSpeech,
         folder: 'IELTS Tracker',
         tags: `IELTS, ${testName}`,
         link: v.link || '',
         note: v.note || '', 
         cefr: getCEFRLevel(v.text),
         image: null,
-        audio: enrichedData.audio, // Đã có audio
+        audio: enrichedData.audio,
         dateAdded: new Date().toISOString(),
         reviewCount: 0,
         aiPracticeCount: 0
@@ -200,7 +182,7 @@ function AuthButton({ user, onLogin, onLogout }: any) {
   return (
     <div className="relative">
       <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-bold transition">
-        <LogIn size={14} /> Kết nối Vocab Garden
+        <LogIn size={14} /> Đăng nhập
       </button>
       {showForm && (
         <div className="absolute top-full right-0 mt-2 w-64 bg-white text-slate-800 p-4 rounded-xl shadow-xl border border-slate-200 z-50">
@@ -218,7 +200,6 @@ function AuthButton({ user, onLogin, onLogout }: any) {
   );
 }
 
-// --- AUTOCOMPLETE INPUT COMPONENT (UPDATED) ---
 function VocabInput({ value, onChange, onSelectSuggestion, placeholder, className }: any) {
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -240,7 +221,6 @@ function VocabInput({ value, onChange, onSelectSuggestion, placeholder, classNam
                 setShowSuggestions(false);
             }
         };
-        
         const timeoutId = setTimeout(fetchSuggestions, 300);
         return () => clearTimeout(timeoutId);
     }, [value]);
@@ -255,7 +235,6 @@ function VocabInput({ value, onChange, onSelectSuggestion, placeholder, classNam
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Helper để lấy màu cho CEFR Badge
     const getLevelColor = (level: string) => {
         switch(level) {
             case 'A1': return 'bg-green-50 text-green-700 border-green-200';
@@ -270,31 +249,16 @@ function VocabInput({ value, onChange, onSelectSuggestion, placeholder, classNam
 
     return (
         <div className="relative flex-1" ref={wrapperRef}>
-            <input 
-                type="text" 
-                placeholder={placeholder} 
-                value={value} 
-                onChange={onChange} 
-                className={className} 
-            />
+            <input type="text" placeholder={placeholder} value={value} onChange={onChange} className={className} />
             {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute bottom-full left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl mb-1 z-50 overflow-hidden">
                     {suggestions.map((s, i) => {
                         const level = getCEFRLevel(s.word);
                         const levelClass = getLevelColor(level);
                         return (
-                            <div 
-                                key={i} 
-                                onClick={() => {
-                                    onSelectSuggestion(s.word);
-                                    setShowSuggestions(false);
-                                }}
-                                className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-sm text-slate-700 flex justify-between items-center"
-                            >
+                            <div key={i} onClick={() => { onSelectSuggestion(s.word); setShowSuggestions(false); }} className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-sm text-slate-700 flex justify-between items-center">
                                 <span>{s.word}</span>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${levelClass}`}>
-                                    {level}
-                                </span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${levelClass}`}>{level}</span>
                             </div>
                         )
                     })}
@@ -310,44 +274,58 @@ export default function IELTSTrackerPro() {
   const [targetBand, setTargetBand] = useState(6.5);
   const [user, setUser] = useState<any>(null);
   
-  // Input State
   const [editingId, setEditingId] = useState<any>(null);
   const [inputType, setInputType] = useState('listening');
   const [scores, setScores] = useState<any>({ p1: '', p2: '', p3: '', p4: '' });
   const [testName, setTestName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().substr(0, 10));
   
-  // Note & Vocab State
   const [notes, setNotes] = useState('');
   const [vocabList, setVocabList] = useState<any[]>([]); 
   const [tempVocab, setTempVocab] = useState({ text: '', link: '', note: '' });
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoadingMeaning, setIsLoadingMeaning] = useState(false);
 
-  // Load Data & Auth
   useEffect(() => {
-    setLogs(DataService.getLogs());
-    setTargetBand(DataService.getTarget());
-
     if (auth) {
-      const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+      const unsub = onAuthStateChanged(auth, (u) => {
+        setUser(u);
+        if (u) {
+            const logsRef = collection(db, `artifacts/${VOCAB_GARDEN_APP_ID}/users/${u.uid}/ielts_logs`);
+            const q = query(logsRef, orderBy('date', 'desc'));
+            const unsubLogs = onSnapshot(q, (snapshot) => {
+                const fetchedLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setLogs(fetchedLogs);
+            });
+
+            const settingsRef = doc(db, `artifacts/${VOCAB_GARDEN_APP_ID}/users/${u.uid}/settings`);
+            getDoc(settingsRef).then(snap => {
+                if (snap.exists() && snap.data().targetBand) {
+                    setTargetBand(snap.data().targetBand);
+                }
+            });
+
+            return () => {
+                unsubLogs();
+            };
+        } else {
+            setLogs([]);
+        }
+      });
       return () => unsub();
     }
   }, []);
 
-  useEffect(() => {
-    if (logs.length > 0) DataService.saveLogs(logs);
-  }, [logs]);
+  const updateTargetBand = async (newTarget: number) => {
+      setTargetBand(newTarget);
+      if (user) {
+          const settingsRef = doc(db, `artifacts/${VOCAB_GARDEN_APP_ID}/users/${user.uid}/settings`);
+          await setDoc(settingsRef, { targetBand: newTarget }, { merge: true });
+      }
+  };
 
-  useEffect(() => {
-    DataService.saveTarget(targetBand);
-  }, [targetBand]);
-
-  // Auth Handlers
   const handleLogin = (email: any, password: any) => signInWithEmailAndPassword(auth, email, password);
   const handleLogout = () => signOut(auth);
-
-  // --- HANDLERS ---
 
   const handleScoreChange = (part: any, value: any) => {
     if (value === '' || (parseInt(value) >= 0 && parseInt(value) <= 40)) {
@@ -374,7 +352,7 @@ export default function IELTSTrackerPro() {
   const addVocab = () => {
     if (!tempVocab.text.trim()) return;
     const newItem = {
-      id: Date.now(),
+      id: Date.now(), 
       text: tempVocab.text,
       link: tempVocab.link,
       note: tempVocab.note,
@@ -390,7 +368,8 @@ export default function IELTSTrackerPro() {
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
-    
+    if (!user) return alert("Vui lòng đăng nhập để lưu kết quả lên Cloud!");
+
     const p1 = parseInt(scores.p1) || 0;
     const p2 = parseInt(scores.p2) || 0;
     const p3 = parseInt(scores.p3) || 0;
@@ -400,9 +379,7 @@ export default function IELTSTrackerPro() {
     const band = calculateBand(totalRaw, inputType);
     const finalTestName = testName || `Practice Test`;
 
-    // 1. Lưu Local Log
-    const logEntry = {
-      id: editingId || Date.now(),
+    const logData = {
       date,
       testName: finalTestName,
       type: inputType,
@@ -410,37 +387,38 @@ export default function IELTSTrackerPro() {
       totalRaw,
       band,
       notes,
-      vocabList
+      vocabList 
     };
 
-    if (editingId) {
-      setLogs(logs.map(l => l.id === editingId ? logEntry : l));
-    } else {
-      setLogs([logEntry, ...logs]);
-    }
-
-    // 2. Sync sang Vocab Garden (Nếu đã đăng nhập)
-    if (user && vocabList.length > 0) {
-      setIsSyncing(true);
-      try {
-        const result = await DataService.syncToGarden(user, vocabList, finalTestName);
-        if (result.success && result.count > 0) {
-          alert(`Đã lưu kết quả & Trồng ${result.count} từ mới sang Vocab Garden! 🌱\n(App đã tự động tìm Phiên âm, Loại từ & Nghĩa tiếng Việt cho bạn)`);
+    try {
+        if (editingId) {
+            const docRef = doc(db, `artifacts/${VOCAB_GARDEN_APP_ID}/users/${user.uid}/ielts_logs`, editingId);
+            await updateDoc(docRef, logData);
         } else {
-          alert('Đã lưu kết quả (Không có từ vựng nào được sync).');
+            const logsRef = collection(db, `artifacts/${VOCAB_GARDEN_APP_ID}/users/${user.uid}/ielts_logs`);
+            await addDoc(logsRef, logData);
         }
-      } catch (err) {
-        console.error(err);
-        alert('Lưu kết quả xong, nhưng lỗi khi kết nối Vocab Garden.');
-      } finally {
-        setIsSyncing(false);
-      }
-    } else {
-      alert(`Đã lưu kết quả! Band: ${band}`);
-    }
 
-    resetForm();
-    setActiveTab('dashboard');
+        if (vocabList.length > 0) {
+            setIsSyncing(true);
+            const result = await DataService.syncToGarden(user, vocabList, finalTestName);
+            if (result.success && result.count > 0) {
+                alert(`Đã lưu Cloud & Trồng ${result.count} từ mới sang Vocab Garden! 🌱`);
+            } else {
+                alert('Đã lưu kết quả (Không có từ vựng nào được sync).');
+            }
+            setIsSyncing(false);
+        } else {
+            alert(`Đã lưu kết quả lên Cloud! Band: ${band}`);
+        }
+
+        resetForm();
+        setActiveTab('dashboard');
+
+    } catch (err) {
+        console.error(err);
+        alert("Lỗi khi lưu dữ liệu lên Cloud.");
+    }
   };
 
   const handleEdit = (log: any) => {
@@ -459,9 +437,12 @@ export default function IELTSTrackerPro() {
     setActiveTab('input');
   };
 
-  const handleDelete = (id: any) => {
-     if (confirm('Xóa kết quả này?')) {
-        setLogs(logs.filter(log => log.id !== id));
+  const handleDelete = async (id: any) => {
+     if (confirm('Xóa kết quả này khỏi Cloud?')) {
+        if (user) {
+            const docRef = doc(db, `artifacts/${VOCAB_GARDEN_APP_ID}/users/${user.uid}/ielts_logs`, id);
+            await deleteDoc(docRef);
+        }
      }
   };
 
@@ -524,7 +505,7 @@ export default function IELTSTrackerPro() {
 
   const handleManualSync = async () => {
     if(!user) return alert("Vui lòng kết nối tài khoản Vocab Garden trước.");
-    const confirmSync = confirm("Bạn có muốn đồng bộ lại toàn bộ từ vựng trong lịch sử sang Vocab Garden không? (Có thể tạo từ trùng lặp nếu đã sync trước đó)");
+    const confirmSync = confirm("Bạn có muốn đồng bộ lại toàn bộ từ vựng trong lịch sử sang Vocab Garden không?");
     if(!confirmSync) return;
     
     setIsSyncing(true);
@@ -534,10 +515,9 @@ export default function IELTSTrackerPro() {
         total += res.count;
     }
     setIsSyncing(false);
-    alert(`Đã đồng bộ xong! Tổng cộng ${total} từ đã được gửi sang vườn.\n(Các từ được tự động bổ sung phiên âm & loại từ)`);
+    alert(`Đã đồng bộ xong! Tổng cộng ${total} từ đã được gửi sang vườn.`);
   }
 
-  // Khai báo rõ kiểu string[] để tránh lỗi TS2538 ở vòng lặp
   const inputParts: string[] = inputType === 'listening' ? ['p1', 'p2', 'p3', 'p4'] : ['p1', 'p2', 'p3'];
 
   return (
@@ -576,14 +556,29 @@ export default function IELTSTrackerPro() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-4 pb-24">
+      <main className="max-w-5xl mx-auto p-4 pb-32">
         
-        {/* TABS */}
-        <div className="flex gap-2 mb-6 bg-white p-1 rounded-lg shadow-sm border border-slate-200 sticky top-20 z-10 overflow-x-auto">
-          <button onClick={() => { resetForm(); setActiveTab('dashboard'); }} className={`flex-1 min-w-[100px] py-2 rounded-md font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'dashboard' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}><TrendingUp size={16} /> <span className="hidden md:inline">Dashboard</span></button>
-          <button onClick={() => setActiveTab('input')} className={`flex-1 min-w-[120px] py-2 rounded-md font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'input' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>{editingId ? <Edit3 size={16} /> : <PlusCircle size={16} />} {editingId ? 'Sửa bài' : 'Nhập điểm'}</button>
-          <button onClick={() => setActiveTab('vocab')} className={`flex-1 min-w-[120px] py-2 rounded-md font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'vocab' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}><Library size={16} /> Kho từ vựng</button>
-          <button onClick={() => { resetForm(); setActiveTab('history'); }} className={`flex-1 min-w-[100px] py-2 rounded-md font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'history' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}><History size={16} /> Lịch sử</button>
+        {/* === FIXED BOTTOM NAVIGATION (FLOATING STYLE) === */}
+        {/* Đã xóa hoàn toàn các class responsive (md:) để giữ nguyên vị trí dưới đáy trên mọi màn hình */}
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-2xl border border-slate-200 z-50 flex items-center gap-1 w-[95%] max-w-md">
+          
+          <button onClick={() => { resetForm(); setActiveTab('dashboard'); }} className={`flex-1 py-3 rounded-xl font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'dashboard' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+            <TrendingUp size={20} /> <span className="">Dashboard</span>
+          </button>
+          
+          <button onClick={() => setActiveTab('input')} className={`flex-1 py-3 rounded-xl font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'input' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+            {editingId ? <Edit3 size={20} /> : <PlusCircle size={20} />} 
+            <span className="">Nhập điểm</span>
+          </button>
+          
+          <button onClick={() => setActiveTab('vocab')} className={`flex-1 py-3 rounded-xl font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'vocab' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+            <Library size={20} /> <span className="">Từ vựng</span>
+          </button>
+          
+          <button onClick={() => { resetForm(); setActiveTab('history'); }} className={`flex-1 py-3 rounded-xl font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'history' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+            <History size={20} /> <span className="">Lịch sử</span>
+          </button>
+
         </div>
 
         {/* --- DASHBOARD --- */}
@@ -594,7 +589,7 @@ export default function IELTSTrackerPro() {
                     <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600"><Flag size={20} /></div>
                     <div><h3 className="text-sm font-bold text-slate-800">Mục tiêu Band Score</h3></div>
                 </div>
-                <select value={targetBand} onChange={(e) => setTargetBand(parseFloat(e.target.value))} className="p-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none bg-slate-50">{[4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0].map(s => <option key={s} value={s}>{s}</option>)}</select>
+                <select value={targetBand} onChange={(e) => updateTargetBand(parseFloat(e.target.value))} className="p-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none bg-slate-50">{[4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0].map(s => <option key={s} value={s}>{s}</option>)}</select>
             </div>
 
             <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
